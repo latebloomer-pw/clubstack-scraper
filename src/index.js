@@ -4,17 +4,54 @@ import { validationConfig } from './validators/eventValidator.js'
 
 
 async function scrapeAll() {
-    const raEvents = (await scrapeRA()).map(event => ({
-        ...event,
-        validation: validationConfig.validateEvent(event)
-    }));
+    let raEvents = [];
+    let diceEvents = [];
 
-    const diceEvents = (await scrapeDice()).map(event => ({
-        ...event,
-        validation: validationConfig.validateEvent(event)
-    }));
+    try {
+        const raResults = await scrapeRA();
+        if (raResults && Array.isArray(raResults)) {
+            raEvents = raResults.map(event => ({
+                ...event,
+                validation: validationConfig.validateEvent(event)
+            }));
+        } else {
+            console.error('RA scraper returned invalid data:', raResults);
+        }
+    } catch (error) {
+        console.error('RA scraper failed:', error.message);
+    }
 
-    return combinedEvents(diceEvents, raEvents);
+    try {
+        const diceResults = await scrapeDice();
+        if (diceResults && Array.isArray(diceResults)) {
+            diceEvents = diceResults.map(event => ({
+                ...event,
+                validation: validationConfig.validateEvent(event)
+            }));
+        } else {
+            console.error('Dice scraper returned invalid data:', diceResults);
+        }
+    } catch (error) {
+        console.error('Dice scraper failed:', error.message);
+    }
+
+    // Even if one fails, we'll return results from the other
+    const combinedResults = combinedEvents(diceEvents, raEvents);
+
+    // Add metadata about the scrape
+    return {
+        statusCode: 200,
+        body: JSON.stringify({
+            data: combinedResults,
+            meta: {
+                raSuccess: raEvents.length > 0,
+                diceSuccess: diceEvents.length > 0,
+                raCount: raEvents.length,
+                diceCount: diceEvents.length,
+                timestamp: new Date().toISOString()
+            }
+        })
+    };
 }
 
 function isDuplicate(event1, event2) {
