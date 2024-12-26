@@ -82,5 +82,3 @@ export const handler = async () => {
         body: JSON.stringify(events)
     };
 };
-const response = await handler();
-console.log(response);
