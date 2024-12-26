@@ -75,7 +75,12 @@ function combinedEvents(diceEvents, raEvents) {
         .sort((a, b) => b.validation.score - a.validation.score);
 }
 
-(async () => {
-    const allEvents = await scrapeAll();
-    console.log(allEvents);
-})();
+export const handler = async () => {
+    const events = await scrapeAll();
+    return {
+        statusCode: 200,
+        body: JSON.stringify(events)
+    };
+};
+const response = await handler();
+console.log(response);

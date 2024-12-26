@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 
 export async function getBrowser() {
     return await puppeteer.launch({
-        headless: false,
+        headless: "new",
         defaultViewport: null,
         args: ['--window-size=1920,1080']
     });
