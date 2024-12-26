@@ -10,53 +10,149 @@ function getDateRange() {
     return { start, end };
 }
 
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 export async function scrapeDice() {
     const { start, end } = getDateRange();
     const url = `https://dice.fm/browse/new-york?from=${start}&until=${end}`;
 
     let browser;
-    try {
-        console.log('Starting Dice scraper...');
-        browser = await getBrowser();
-        console.log('Browser launched successfully');
+    let retryCount = 0;
+    const maxRetries = 3;
 
-        const page = await browser.newPage();
-        console.log(`Navigating to: ${url}`);
+    while (retryCount < maxRetries) {
+        try {
+            console.log(`Starting Dice scraper attempt ${retryCount + 1}...`);
+            browser = await getBrowser();
+            console.log('Browser launched successfully');
 
-        // Add timeout and log page load status
-        await page.goto(url, {
-            waitUntil: 'networkidle0',
-            timeout: 30000
-        });
-        console.log('Page loaded successfully');
+            const page = await browser.newPage();
 
-        // Log page content for debugging
-        const content = await page.content();
-        console.log('Page content length:', content.length);
-        console.log('First 500 chars:', content.substring(0, 500));
+            await page.setExtraHTTPHeaders({
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"'
+            });
 
-        // Log selector presence
-        const cardCount = await page.$$eval('[class*="EventCard"]', elements => elements.length);
-        console.log(`Found ${cardCount} event cards`);
+            await page.setViewport({
+                width: 1920,
+                height: 1080
+            });
 
-        const events = await page.evaluate(async () => {
-            // ... rest of your existing evaluate code ...
-        });
+            console.log(`Navigating to: ${url}`);
+            await page.goto(url, {
+                waitUntil: 'networkidle0',
+                timeout: 60000
+            });
 
-        console.log(`Successfully scraped ${events.length} events`);
-        return events;
-    } catch (error) {
-        console.error('Detailed scraping error:', {
-            message: error.message,
-            stack: error.stack,
-            phase: browser ? 'page_operations' : 'browser_launch',
-            url: url
-        });
-        throw error; // Re-throw to handle in parent
-    } finally {
-        if (browser) {
-            await browser.close();
-            console.log('Browser closed');
+            console.log('Page loaded, waiting for content...');
+
+            await page.waitForSelector('[class*="EventCard"]', {
+                timeout: 30000,
+                visible: true
+            });
+            console.log('Event cards found on page');
+
+            await delay(1000 + Math.random() * 2000);
+
+            const events = await page.evaluate(async () => {
+                const getEvents = () => {
+                    const cards = document.querySelectorAll('[class*="EventCard"]');
+                    const seen = new Map();
+
+                    Array.from(cards).forEach(card => {
+                        const title = card.querySelector('[class*="Title"]')?.innerText;
+                        if (!title) return;
+
+                        const event = {
+                            title,
+                            date: card.querySelector('[class*="DateText"]')?.innerText,
+                            venue: card.querySelector('[class*="Venue"]')?.innerText,
+                            price: card.querySelector('[class*="Price"]')?.innerText,
+                            link: card.closest('a')?.href,
+                            source: 'dice',
+                        };
+
+                        // Only add if we have required fields and haven't seen this event before
+                        if (event.title && event.venue && (!seen.has(title) || !seen.get(title).link)) {
+                            seen.set(title, event);
+                        }
+                    });
+
+                    return Array.from(seen.values());
+                };
+
+                let events = getEvents();
+                console.log(`Initial events found: ${events.length}`);
+
+                let previousLength = 0;
+                let unchangedCount = 0;
+                const maxUnchangedAttempts = 3;
+
+                while (true) {
+                    const loadMore = document.querySelector('[class*="LoadMoreRow"] button');
+                    if (!loadMore || !loadMore.offsetParent) {
+                        console.log('No more load button visible');
+                        break;
+                    }
+
+                    try {
+                        loadMore.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        loadMore.click();
+                        await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
+
+                        events = getEvents();
+
+                        if (events.length === previousLength) {
+                            unchangedCount++;
+                            if (unchangedCount >= maxUnchangedAttempts) {
+                                console.log('No new events after multiple attempts');
+                                break;
+                            }
+                        } else {
+                            unchangedCount = 0;
+                        }
+
+                        previousLength = events.length;
+                        console.log(`Current event count: ${events.length}`);
+
+                    } catch (error) {
+                        console.log('Error loading more events:', error);
+                        break;
+                    }
+                }
+
+                return getEvents();
+            });
+
+            console.log(`Successfully scraped ${events.length} events from Dice`);
+            return events;
+
+        } catch (error) {
+            console.error('Scraping error:', {
+                attempt: retryCount + 1,
+                message: error.message,
+                stack: error.stack,
+                phase: browser ? 'page_operations' : 'browser_launch',
+                url: url
+            });
+
+            retryCount++;
+            if (retryCount >= maxRetries) {
+                throw new Error(`Failed after ${maxRetries} attempts: ${error.message}`);
+            }
+
+            const retryDelay = Math.pow(2, retryCount) * 1000;
+            console.log(`Retrying in ${retryDelay}ms...`);
+            await delay(retryDelay);
+
+        } finally {
+            if (browser) {
+                await browser.close();
+                console.log('Browser closed');
+            }
         }
     }
 }
