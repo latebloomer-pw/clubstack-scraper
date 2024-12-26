@@ -7,6 +7,10 @@ export async function getBrowser() {
     return await puppeteer.launch({
         headless: "new",
         defaultViewport: null,
-        args: ['--window-size=1920,1080']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--window-size=1920,1080'
+        ]
     });
 }
