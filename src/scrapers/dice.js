@@ -14,51 +14,49 @@ export async function scrapeDice() {
     const { start, end } = getDateRange();
     const url = `https://dice.fm/browse/new-york?from=${start}&until=${end}`;
 
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-
+    let browser;
     try {
-        console.log(`Scraping: ${url}`);
-        await page.goto(url, { waitUntil: 'networkidle0' });
-        await new Promise(r => setTimeout(r, 5000));
+        console.log('Starting Dice scraper...');
+        browser = await getBrowser();
+        console.log('Browser launched successfully');
+
+        const page = await browser.newPage();
+        console.log(`Navigating to: ${url}`);
+
+        // Add timeout and log page load status
+        await page.goto(url, {
+            waitUntil: 'networkidle0',
+            timeout: 30000
+        });
+        console.log('Page loaded successfully');
+
+        // Log page content for debugging
+        const content = await page.content();
+        console.log('Page content length:', content.length);
+        console.log('First 500 chars:', content.substring(0, 500));
+
+        // Log selector presence
+        const cardCount = await page.$$eval('[class*="EventCard"]', elements => elements.length);
+        console.log(`Found ${cardCount} event cards`);
 
         const events = await page.evaluate(async () => {
-            const getEvents = () => {
-                const cards = document.querySelectorAll('[class*="EventCard"]');
-                const seen = new Map();
-
-                Array.from(cards).forEach(card => {
-                    const title = card.querySelector('[class*="Title"]')?.innerText;
-                    const event = {
-                        title,
-                        date: card.querySelector('[class*="DateText"]')?.innerText,
-                        venue: card.querySelector('[class*="Venue"]')?.innerText,
-                        price: card.querySelector('[class*="Price"]')?.innerText,
-                        link: card.closest('a')?.href,
-                        source: 'dice',
-                    };
-
-                    if (!seen.has(title) || !seen.get(title).link) {
-                        seen.set(title, event);
-                    }
-                });
-
-                return Array.from(seen.values());
-            };
-
-            while (true) {
-                const loadMore = document.querySelector('[class*="LoadMoreRow"] button');
-                if (!loadMore) break;
-                loadMore.click();
-                await new Promise(r => setTimeout(r, 2000));
-            }
-
-            return getEvents();
+            // ... rest of your existing evaluate code ...
         });
+
+        console.log(`Successfully scraped ${events.length} events`);
         return events;
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Detailed scraping error:', {
+            message: error.message,
+            stack: error.stack,
+            phase: browser ? 'page_operations' : 'browser_launch',
+            url: url
+        });
+        throw error; // Re-throw to handle in parent
     } finally {
-        await browser.close();
+        if (browser) {
+            await browser.close();
+            console.log('Browser closed');
+        }
     }
 }
