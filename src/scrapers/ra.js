@@ -1,4 +1,4 @@
-import { getBrowser } from '../utils/browser.js';
+import { getBrowser, setupPage } from '../utils/browser.js';
 import logger from '../utils/logger.js';
 import dotenv from 'dotenv';
 
