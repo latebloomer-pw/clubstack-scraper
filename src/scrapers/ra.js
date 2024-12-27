@@ -27,6 +27,7 @@ export async function scrapeRA() {
             console.log('Browser launched successfully');
 
             const page = await browser.newPage();
+            await setupPage(page);
 
             // Configure browser environment
             await page.setExtraHTTPHeaders({
